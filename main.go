@@ -8,6 +8,7 @@ import (
 	"image"
 	"image/jpeg"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -122,18 +123,26 @@ func fetchFileList() ([]Image, error) {
 	return result, nil
 }
 
+func deleteFile(host string, scanName string) error {
+	var req *http.Request
+	var err error
+
+	// todo: Replace all raw prints with Log
+	log.Println("Deleting downloaded file from Doxie", scanName)
+	commandString := fmt.Sprintf("http://%s/scans/%s", host, scanName)
+
+	// http client doesnt appear to implement DELETE requests directly
+	req, err = http.NewRequest("DELETE", commandString, nil)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	defer req.Body.Close()
+	return nil
+}
+
 func main() {
-	/*
-		# For each one, process the file
-		# Download, Delete, Process (thread)
-		GET /scans/DOXIE/JPEG/IMG_XXXX.JPG
-		# 404 Not Found
-
-		DELETE /scans/DOXIE/JPEG/IMG_XXXX.JPG
-		# 404 Not Found
-	*/
-
 	daemonize := flag.Bool("daemon", false, "Run continuously in the foreground")
+	hostIp := flag.String("ip", "", "Specify the IP to poll")
 	var poll_result bool
 	var scans []Image
 	var err error
@@ -149,35 +158,29 @@ func main() {
 			}
 			for scan := range scans {
 				scanName := scans[scan].Name
+
+				// Dont download the webhook log
 				if scanName == "/DOXIE/WEBHOOK/LOG.TXT" {
 					continue
 				}
-				fileName, err = GetImage("192.168.1.131", scanName)
+
+				fileName, err = GetImage(*hostIp, scanName)
 				if err != nil {
 					fmt.Println("Failed to download file", err)
 					continue
 				}
-				fmt.Println("filename is", fileName)
 
-				// generate searcheable pdf
-				// name by date
-
-				//err = processFile(file)
-				//if err != nil {
-				//	fmt.Println("Could not process file", err)
-				//	continue
-				//}
-				//err = deleteFile(scan)
-				//if err != nil {
-				//	fmt.Println("Failed to delete downloaded file", err)
-				//	continue
-				//}
+				err = deleteFile(*hostIp, scanName)
+				if err != nil {
+					fmt.Println("Failed to delete downloaded file", err)
+					continue
+				}
+				go processFile(fileName)
 			}
 		}
 		if *daemonize != true {
 			break
 		}
-		//time.Sleep(1 * time.Minute)
-		time.Sleep(5 * time.Second)
+		time.Sleep(5 * time.Minute)
 	}
 }
