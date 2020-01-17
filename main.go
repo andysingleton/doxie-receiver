@@ -2,13 +2,11 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"flag"
 	"fmt"
-	"image"
 	"image/jpeg"
-	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -23,137 +21,85 @@ type Image struct {
 	Modified string `json:"Modified"`
 }
 
-func GetImage(host string, path string) (string, error) {
-	var file image.Image
+func getIpAddr(hostIp string) net.IP {
+	ipAddr := net.ParseIP(hostIp)
+	if ipAddr == nil {
+		log.Fatal("You must provide a valid address")
+	} else {
+		log.Println("Using address", ipAddr.String())
+	}
+	return ipAddr
+}
+
+func poll(host hostAPIInterface) bool {
+	result, err := host.GetStatus()
+	if err != nil {
+		return false
+	}
+	log.Println("Connected to", result["MAC"])
+	return true
+}
+
+func getImage(path string, host hostAPIInterface, imagePath string) (string, error) {
 	var localFile *os.File
-	fmt.Println("Downloading image", path)
-	commandString := fmt.Sprintf("http://%s/scans/%s", host, path)
-	r, err := myClient.Get(commandString)
-	if err != nil {
-		return "", err
-	}
-	defer r.Body.Close()
-
-	file, err = jpeg.Decode(r.Body)
+	log.Println("Downloading image", path)
+	image, err := host.GetJpeg(path)
 	if err != nil {
 		return "", err
 	}
 
-	fileName := fmt.Sprintf("images/%s", filepath.Base(path))
-	fmt.Println("Creating", fileName)
+	// todo: Check and create the images directory. make "images" a config variable
+	fileName := fmt.Sprintf("%s/%s", imagePath, filepath.Base(path))
 	localFile, err = os.Create(fileName)
 	if err != nil {
-		fmt.Println("Could not create file", err)
+		log.Println("Could not create file", err)
 		return "", err
 	}
 
 	buf := new(bytes.Buffer)
-	err = jpeg.Encode(buf, file, nil)
-
+	err = jpeg.Encode(buf, image, nil)
 	bytesWritten, err := localFile.Write(buf.Bytes())
 	fmt.Println(bytesWritten, "Bytes written")
 
 	return fileName, nil
 }
 
-func GetList(host string, command string) ([]Image, error) {
-	var result []Image
-	commandString := fmt.Sprintf("http://%s/%s", host, command)
-	r, err := myClient.Get(commandString)
-	if err != nil {
-		return result, err
-	}
-	defer r.Body.Close()
-
-	body, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		return result, err
-	}
-
-	err = json.Unmarshal([]byte(body), &result)
-	if err != nil {
-		return result, err
-	}
-
-	return result, nil
-}
-
-func GetItem(host string, command string) (map[string]interface{}, error) {
-	var result map[string]interface{}
-	commandString := fmt.Sprintf("http://%s/%s", host, command)
-	r, err := myClient.Get(commandString)
-	if err != nil {
-		return result, err
-	}
-	defer r.Body.Close()
-
-	body, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		return result, err
-	}
-	err = json.Unmarshal([]byte(body), &result)
-	if err != nil {
-		fmt.Println("Body is", err)
-		return result, err
-	}
-
-	return result, nil
-}
-
-func check(e error) {
-	if e != nil {
-		panic(e)
-	}
-}
-
-func poll() (bool, error) {
-	result, err := GetItem("192.168.1.131", "hello.json")
-	if err != nil {
-		return false, err
-	}
-	fmt.Println("Connected to ", result["MAC"])
-	return true, nil
-}
-
-func fetchFileList() ([]Image, error) {
-	result, err := GetList("192.168.1.131", "scans.json")
-	if err != nil {
-		return result, err
-	}
-	return result, nil
-}
-
-func deleteFile(host string, scanName string) error {
-	var req *http.Request
-	var err error
-
-	// todo: Replace all raw prints with Log
+func deleteFile(scanName string, host hostAPIInterface) error {
 	log.Println("Deleting downloaded file from Doxie", scanName)
-	commandString := fmt.Sprintf("http://%s/scans/%s", host, scanName)
-
-	// http client doesnt appear to implement DELETE requests directly
-	req, err = http.NewRequest("DELETE", commandString, nil)
+	err := host.Delete(scanName)
 	if err != nil {
-		log.Fatalln(err)
+		return err
 	}
-	defer req.Body.Close()
 	return nil
 }
 
 func main() {
-	daemonize := flag.Bool("daemon", false, "Run continuously in the foreground")
-	hostIp := flag.String("ip", "", "Specify the IP to poll")
-	var poll_result bool
 	var scans []Image
 	var err error
 	var fileName string
 
+	daemonize := flag.Bool("daemon", false, "Run continuously in the foreground")
+	hostIp := flag.String("ip", "", "Specify the Doxie IP")
+	hostPort := flag.Int("port", 80, "Specify the Doxie port (default 80)")
+	imagePath := flag.String("output", "images", "Output path for stored images")
+	noDelete := flag.Bool("no-delete", false, "Don't remove images from Doxie")
+	flag.Parse()
+
+	if *hostIp == "" {
+		fmt.Println("You must provide an IP address for your Doxie")
+		os.Exit(1)
+	}
+
+	host := hostAPI{
+		Ip:   getIpAddr(*hostIp),
+		Port: *hostPort,
+	}
+
 	for true {
-		poll_result, _ = poll()
-		if poll_result == true {
-			scans, err = fetchFileList()
+		if poll(host) {
+			scans, err = host.GetFileList()
 			if err != nil {
-				fmt.Println("Failed to fetch file list", err)
+				log.Println("Failed to fetch file list", err)
 				continue
 			}
 			for scan := range scans {
@@ -164,16 +110,17 @@ func main() {
 					continue
 				}
 
-				fileName, err = GetImage(*hostIp, scanName)
+				fileName, err = getImage(scanName, host, *imagePath)
 				if err != nil {
-					fmt.Println("Failed to download file", err)
+					log.Println("Failed to download file", err)
 					continue
 				}
-
-				err = deleteFile(*hostIp, scanName)
-				if err != nil {
-					fmt.Println("Failed to delete downloaded file", err)
-					continue
+				if *noDelete == false {
+					err = deleteFile(scanName, host)
+					if err != nil {
+						log.Println("Failed to delete downloaded file", err)
+						continue
+					}
 				}
 				go processFile(fileName)
 			}
@@ -181,6 +128,8 @@ func main() {
 		if *daemonize != true {
 			break
 		}
-		time.Sleep(5 * time.Minute)
+		time.Sleep(30 * time.Second)
 	}
 }
+
+// todo: Replace all raw prints with Log
