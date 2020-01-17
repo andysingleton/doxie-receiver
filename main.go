@@ -9,7 +9,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"path/filepath"
 	"time"
 )
 
@@ -32,6 +31,7 @@ func getIpAddr(hostIp string) net.IP {
 }
 
 func poll(host hostAPIInterface) bool {
+	log.Println("Polling")
 	result, err := host.GetStatus()
 	if err != nil {
 		return false
@@ -49,8 +49,11 @@ func getImage(path string, host hostAPIInterface, imagePath string) (string, err
 	}
 
 	// todo: Check and create the images directory. make "images" a config variable
-	fileName := fmt.Sprintf("%s/%s", imagePath, filepath.Base(path))
-	localFile, err = os.Create(fileName)
+	t := time.Now()
+	fileName := fmt.Sprintf(t.Format("02-01-2006_15:04:05"))
+	filePath := fmt.Sprintf("%s/%s.jpeg", imagePath, fileName)
+
+	localFile, err = os.Create(filePath)
 	if err != nil {
 		log.Println("Could not create file", err)
 		return "", err
@@ -59,7 +62,7 @@ func getImage(path string, host hostAPIInterface, imagePath string) (string, err
 	buf := new(bytes.Buffer)
 	err = jpeg.Encode(buf, image, nil)
 	bytesWritten, err := localFile.Write(buf.Bytes())
-	fmt.Println(bytesWritten, "Bytes written")
+	log.Println(bytesWritten, "Bytes written")
 
 	return fileName, nil
 }
@@ -124,6 +127,7 @@ func main() {
 				}
 				go processFile(fileName)
 			}
+			log.Println("Done")
 		}
 		if *daemonize != true {
 			break
