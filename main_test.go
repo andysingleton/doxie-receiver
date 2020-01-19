@@ -55,5 +55,4 @@ func TestDeleteFile(t *testing.T) {
 	if err != nil {
 		t.Errorf("Function errored: %s", err)
 	}
-
 }

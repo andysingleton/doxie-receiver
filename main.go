@@ -137,3 +137,4 @@ func main() {
 }
 
 // todo: Replace all raw prints with Log
+// todo: Handle partial json returns
