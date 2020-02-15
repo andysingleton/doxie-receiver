@@ -100,7 +100,7 @@ func main() {
 
 	daemonize := flag.Bool("daemon", false, "Run continuously in the foreground")
 	hostIp := flag.String("ip", "", "Specify the Doxie IP")
-	hostPort := flag.Int("port", 80, "Specify the Doxie port (default 80)")
+	hostPort := flag.Int("port", 80, "Specify the Doxie port")
 	imagePath := flag.String("output", "images", "Output path for stored images")
 	noDelete := flag.Bool("no-delete", false, "Don't remove images from Doxie")
 	flag.Parse()
