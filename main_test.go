@@ -3,6 +3,7 @@ package main
 import (
 	"net"
 	"os"
+	"regexp"
 	"testing"
 )
 
@@ -32,21 +33,23 @@ func TestPollFalse(t *testing.T) {
 
 func TestGetImage(t *testing.T) {
 	host := mockAPI{}
-	testFilePath := "test/foobar"
+	testFilePath := "test/0_01-02-2002 1:2:3.jpeg"
 	_ = os.Remove(testFilePath)
-	result, err := getImage("foobar", host, "test")
+	result, err := getImage("IMG_0.JPG", host, "test")
 	if err != nil {
 		t.Errorf("Function returned error %s", err)
 	}
-	if result != testFilePath {
+
+	re := regexp.MustCompile(`test/0_[0-9-]+_[0-9:]+.jpeg`)
+	if !re.MatchString(result) {
 		t.Errorf("Function did not return correct file path %s", result)
 	}
 
-	_, err = os.Stat(testFilePath)
+	_, err = os.Stat(result)
 	if err != nil {
 		t.Errorf("Could not stat test file")
 	}
-	_ = os.Remove(testFilePath)
+	_ = os.Remove(result)
 }
 
 func TestDeleteFile(t *testing.T) {

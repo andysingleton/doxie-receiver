@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"flag"
 	"fmt"
 	"image/jpeg"
@@ -9,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"regexp"
 	"time"
 )
 
@@ -50,8 +52,23 @@ func getImage(path string, host hostAPIInterface, imagePath string) (string, err
 
 	// todo: Check and create the images directory. make "images" a config variable
 	t := time.Now()
-	fileName := fmt.Sprintf(t.Format("02-01-2006_15:04:05"))
-	filePath := fmt.Sprintf("%s/%s.jpeg", imagePath, fileName)
+	fileDate := fmt.Sprintf(t.Format("02-01-2006_15:04:05"))
+
+	// get the number from the filename
+	re := regexp.MustCompile(`IMG_([0-9]+).JPG`)
+	fileId := re.FindStringSubmatch(path)
+	if len(fileId) == 0 {
+		log.Println("Could not parse an Id from the filename: ", path)
+		return "", errors.New("Could not parse an Id from the filename")
+	}
+
+	filePath := fmt.Sprintf("%s/%s_%s.jpeg", imagePath, fileId[1], fileDate)
+
+	check, _ := os.Stat(filePath)
+	if check != nil {
+		log.Println("File already exists:", imagePath)
+		return "", errors.New("Refusing to overwrite pre-existing target file")
+	}
 
 	localFile, err = os.Create(filePath)
 	if err != nil {
@@ -64,7 +81,7 @@ func getImage(path string, host hostAPIInterface, imagePath string) (string, err
 	bytesWritten, err := localFile.Write(buf.Bytes())
 	log.Println(bytesWritten, "Bytes written")
 
-	return fileName, nil
+	return filePath, nil
 }
 
 func deleteFile(scanName string, host hostAPIInterface) error {
@@ -118,13 +135,14 @@ func main() {
 					log.Println("Failed to download file", err)
 					continue
 				}
+
 				if *noDelete == false {
-					err = deleteFile(scanName, host)
+					err = deleteFile(fileName, host)
 					if err != nil {
 						log.Println("Failed to delete downloaded file", err)
-						continue
 					}
 				}
+
 				go processFile(fileName)
 			}
 			log.Println("Done")
