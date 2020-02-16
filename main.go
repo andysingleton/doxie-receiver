@@ -137,7 +137,7 @@ func main() {
 				}
 
 				if *noDelete == false {
-					err = deleteFile(fileName, host)
+					err = deleteFile(scanName, host)
 					if err != nil {
 						log.Println("Failed to delete downloaded file", err)
 					}
