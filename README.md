@@ -21,7 +21,7 @@ This will download and delete all jpegs.
 * -port: Provide a different port for doxie - Default 80
 
 ## Support
-This tool is provided without any knowledge or support of the creators of Doxier, and is an independent project built on their published API.
+This tool is provided without any knowledge or support of the creators of Doxie & Co. LLC, and is an independent project built on their published API.
 
 ## License
 This software is provided under the terms of the [Apache License, Version 2.0]("https://opensource.org/licenses/Apache-2.0") license
